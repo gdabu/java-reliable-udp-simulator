@@ -41,8 +41,6 @@ class PacketRelayer implements Runnable {
                 localReceiveSocket.receive(transmitPacket);
                 System.out.println(">Packet Received from Sender");
                 
-                System.out.println(new String(transmitPacket.getData()));
-
                 //change packet address from receiver to destination address
                 transmitPacket.setAddress(remoteReceiverAddress);
                 transmitPacket.setPort(remoteReceiverPort);
