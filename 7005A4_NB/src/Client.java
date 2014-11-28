@@ -1,6 +1,9 @@
-
 import java.io.BufferedReader;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.InputStreamReader;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.net.InetAddress;
@@ -15,34 +18,45 @@ import java.net.InetAddress;
  * @author geoffdabu
  */
 public class Client {
-    public static void main(String args[]) throws Exception
-    {   
+    
+    private static int windowSize = 5;
+    
+
+    public static void main(String args[]) throws Exception {
+        InetAddress NetworkAddress = InetAddress.getByName("localhost");
+        DatagramSocket clientLocalSocket = new DatagramSocket(7004);
         
-        DatagramSocket clientSocket = new DatagramSocket(7004);
-        InetAddress IPAddress = InetAddress.getByName("localhost");
-        byte[] sendData_Bytes = new byte[1024];
-        
-        sendData_Bytes = ">Syn packet".getBytes();
-        
-        
-        byte[] receive_ByteArray = new byte[1024];
-        DatagramPacket receivePacket = new DatagramPacket(receive_ByteArray, receive_ByteArray.length);
+        //for(int i = 0; i < totalPackets; i++)
         
         
-        //syn is sent here,
-        //start timer here
+        ReliableUDPHeader additionalHeader = new ReliableUDPHeader(1, windowSize, "", 0, 0);
+        ByteArrayOutputStream byteOStream = new ByteArrayOutputStream();
+        ObjectOutputStream objOStream = new ObjectOutputStream(byteOStream);
+        objOStream.writeObject(additionalHeader);
         
-        DatagramPacket sendPacket = new DatagramPacket(sendData_Bytes, sendData_Bytes.length, IPAddress, 7005);
-        for(int i = 0; i < 5; i++)
-        {
-            System.out.println("Sending Packet");
-            clientSocket.send(sendPacket);
-        }
         
-        for(int i = 0; i < 5; i++)
-        {
-            clientSocket.receive(receivePacket);
-            System.out.println(new String(receivePacket.getData()));
-        }
-    } 
+        byte[] outgoingByteArray = byteOStream.toByteArray();
+        DatagramPacket sendPacket = new DatagramPacket(outgoingByteArray, outgoingByteArray.length, NetworkAddress, 7005);
+
+        //start timer
+        
+        System.out.println("Sending Packet");
+        clientLocalSocket.send(sendPacket);
+        
+        
+        //receive packet
+        byte[] incomingByteArray         = new byte[1024]; 
+        DatagramPacket incomingPacket    = new DatagramPacket(incomingByteArray, incomingByteArray.length);
+        
+        clientLocalSocket.receive(incomingPacket);
+        byte[] data = incomingPacket.getData();
+        
+        ByteArrayInputStream byteIStream = new ByteArrayInputStream(data);
+        ObjectInputStream objIStream = new ObjectInputStream(byteIStream);
+        
+        ReliableUDPHeader incomingPacketHeader = (ReliableUDPHeader) objIStream.readObject();
+
+    }
+    
+    
 }
