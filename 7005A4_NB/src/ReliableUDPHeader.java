@@ -12,6 +12,8 @@ import java.io.Serializable;
  */
 public class ReliableUDPHeader implements Serializable{
 
+
+
     private String data;
     private int PacketType; 
     private int WindowSize;
@@ -44,6 +46,26 @@ public class ReliableUDPHeader implements Serializable{
 
     public int getAckNum() {
         return AckNum;
+    }
+    
+        public void setData(String data) {
+        this.data = data;
+    }
+
+    public void setPacketType(int PacketType) {
+        this.PacketType = PacketType;
+    }
+
+    public void setWindowSize(int WindowSize) {
+        this.WindowSize = WindowSize;
+    }
+
+    public void setSeqNum(int SeqNum) {
+        this.SeqNum = SeqNum;
+    }
+
+    public void setAckNum(int AckNum) {
+        this.AckNum = AckNum;
     }
     
 }
