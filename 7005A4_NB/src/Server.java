@@ -6,6 +6,7 @@ import java.io.ObjectOutputStream;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.net.InetAddress;
+import java.net.SocketTimeoutException;
 import java.util.ArrayList;
 
 /*
@@ -19,7 +20,7 @@ import java.util.ArrayList;
  */
 public class Server {
 
-    private static int windowSize;
+    private static int windowSize = 5;
     private static int networkPort = 7006;
 
     private static byte[] incomingByteBuffer;
@@ -34,18 +35,25 @@ public class Server {
         networkAddress = InetAddress.getByName("localhost");
         serverLocalSocket = new DatagramSocket(7007);
 
-        waitFor3WayHandShake();
+        //waitFor3WayHandShake();
         System.out.println("Connection Established!");
 
         receiveWindow = new ArrayList();
+        
+        serverLocalSocket.setSoTimeout(2000);
 
         while (true) {
-            for (int i = 0; i < windowSize; i++) {
+            //for (int i = 0; i < windowSize; i++) {
                 //Receive packet
                 incomingByteBuffer = new byte[1024];
                 incomingPacket = new DatagramPacket(incomingByteBuffer, incomingByteBuffer.length);
 
-                serverLocalSocket.receive(incomingPacket);
+                try{
+                    serverLocalSocket.receive(incomingPacket);
+                }catch(SocketTimeoutException to)
+                {
+                    continue;
+                };
                 //retrieve reliable UDP header information
                 ReliableUDPHeader incomingPacketHeader = (ReliableUDPHeader) ReliableUDPHelper.extractObjectFromPacket(incomingPacket);
                 System.out.println("Received from Client: SeqNum=" + incomingPacketHeader.getSeqNum() + ", AckNum=" + incomingPacketHeader.getAckNum());
@@ -53,9 +61,18 @@ public class Server {
                 receiveWindow.add(incomingPacketHeader);
                 if(incomingPacketHeader.getPacketType() == 4)
                 {
+                    System.out.println("EOT packet received");
+                    incomingPacketHeader = (ReliableUDPHeader) ReliableUDPHelper.extractObjectFromPacket(incomingPacket);
+                    incomingPacketHeader.setPacketType(4);
+                    incomingPacketHeader.setAckNum(incomingPacketHeader.getSeqNum() + 1);
+                    incomingPacketHeader.setSeqNum(0);
+                    DatagramPacket sendPacket = ReliableUDPHelper.storeObjectIntoPacketPayload(incomingPacketHeader, networkAddress, networkPort);
+                    System.out.println("Sending Packet: SeqNum=" + incomingPacketHeader.getSeqNum() + ", AckNum=" + incomingPacketHeader.getAckNum());
+                    serverLocalSocket.send(sendPacket);
+                    System.out.println("Server done!");
                     break;
                 }
-            }
+            //}
 
 
             for (int j = 0; j < Math.min(windowSize, receiveWindow.size()); j++) {
@@ -71,35 +88,5 @@ public class Server {
             receiveWindow.clear();
         }
 
-    }
-
-    private static boolean waitFor3WayHandShake() throws Exception {
-        incomingByteBuffer = new byte[1024];
-        incomingPacket = new DatagramPacket(incomingByteBuffer, incomingByteBuffer.length);
-
-        ReliableUDPHeader additionalHeader;
-        ReliableUDPHeader incomingPacketHeader;
-
-        //Receive Syn
-        serverLocalSocket.receive(incomingPacket);
-        //retrieve reliable UDP header information
-        incomingPacketHeader = (ReliableUDPHeader) ReliableUDPHelper.extractObjectFromPacket(incomingPacket);
-        windowSize = incomingPacketHeader.getWindowSize();
-        System.out.println("Received Syn Packet: SeqNum=" + incomingPacketHeader.getSeqNum() + ", AckNum=" + incomingPacketHeader.getAckNum());
-
-        //send SynAck
-        additionalHeader = new ReliableUDPHeader(1, windowSize, "", 0, incomingPacketHeader.getSeqNum() + 1);
-        //set reliable UDP header information
-        DatagramPacket synAckPacket = ReliableUDPHelper.storeObjectIntoPacketPayload(additionalHeader, networkAddress, networkPort);
-        System.out.println("Sending SynAck Packet: SeqNum=" + additionalHeader.getSeqNum() + ", AckNum=" + additionalHeader.getAckNum());
-        serverLocalSocket.send(synAckPacket);
-
-        //receive Ack
-        serverLocalSocket.receive(incomingPacket);
-        //retrieve reliable UDP header information
-        incomingPacketHeader = (ReliableUDPHeader) ReliableUDPHelper.extractObjectFromPacket(incomingPacket);
-        System.out.println("Received Ack Packet: SeqNum=" + incomingPacketHeader.getSeqNum() + ", AckNum=" + incomingPacketHeader.getAckNum());
-
-        return true;
     }
 }

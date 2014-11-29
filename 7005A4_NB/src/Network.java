@@ -1,6 +1,7 @@
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.net.InetAddress;
+import java.util.Random;
 
 /*
  * To change this license header, choose License Headers in Project Properties.
@@ -18,20 +19,29 @@ class PacketRelayer implements Runnable {
 
     private DatagramSocket localReceiveSocket;
     private DatagramSocket localTransmitSocket;
+    
+    private int dropPercentage = 0;
+    
+    private static int totalDropped = 0;
 
     public PacketRelayer(DatagramSocket localReceiveSocket,
             DatagramSocket localTransmitSocket,
             InetAddress remoteReceiverAddress,
-            int remoteReceiverPort) {
+            int remoteReceiverPort,
+            int dropPercentage) {
         this.localReceiveSocket = localReceiveSocket;
         this.localTransmitSocket = localTransmitSocket;
         this.remoteReceiverAddress = remoteReceiverAddress;
         this.remoteReceiverPort = remoteReceiverPort;
+        this.dropPercentage = dropPercentage;
     }
 
     public void run() {
         try {
+            Random rand = new Random();
             byte[] transmitByteArray;
+            int randomNumber = 0;
+            
             while (true) {
                 transmitByteArray = new byte[1024];
 
@@ -39,7 +49,22 @@ class PacketRelayer implements Runnable {
 
                 //Wait for packet from sender
                 localReceiveSocket.receive(transmitPacket);
-                System.out.println(">Packet Received from Sender");
+                System.out.println(">Packet Received from" + transmitPacket.getPort());
+                
+                
+                randomNumber = rand.nextInt(100) + 1;
+                //System.out.println(randomNumber);
+                
+                //ReliableUDPHeader droppedPacket = (ReliableUDPHeader) ReliableUDPHelper.extractObjectFromPacket(transmitPacket);
+                if(randomNumber <= dropPercentage)
+                //if(droppedPacket.getSeqNum() == 3)
+                {
+                    ReliableUDPHeader droppedPacket = (ReliableUDPHeader) ReliableUDPHelper.extractObjectFromPacket(transmitPacket);
+                    System.out.print("Packet Dropped: Type=" + droppedPacket.getPacketType()+ ", SeqNum=" 
+                            + droppedPacket.getSeqNum() + ", AckNum=" + droppedPacket.getAckNum());
+                    System.out.println(" ;; totalPacketsDropped=" + ++totalDropped);
+                    continue;
+                }
                 
                 //change packet address from receiver to destination address
                 transmitPacket.setAddress(remoteReceiverAddress);
@@ -47,7 +72,7 @@ class PacketRelayer implements Runnable {
 
                 //Send packet to receiver
                 localTransmitSocket.send(transmitPacket);
-                System.out.println(">Packet Sent to Receiver");
+                System.out.println(">Packet Sent to: " + transmitPacket.getPort());
             }
         } catch (Exception e) {
 
@@ -66,8 +91,12 @@ public class Network {
 
     private static DatagramSocket clientSocket;
     private static DatagramSocket serverSocket;
+    
+    private static int packetDropPercentage = 0;
 
     public static void main(String args[]) throws Exception {
+        
+        packetDropPercentage = Integer.parseInt(args[0]);
         
         //initialize (remote) client and server addresses 
         clientAddress = InetAddress.getByName("localhost");
@@ -78,14 +107,15 @@ public class Network {
         serverSocket = new DatagramSocket(serverPort);
         
         System.out.println(">Initialize Network");
+        System.out.println("Approximate Drop Rate: " + packetDropPercentage);
         
         //start client to server relay thread
-        PacketRelayer sendToServer              = new PacketRelayer(clientSocket, serverSocket, serverAddress, serverRemotePort);
+        PacketRelayer sendToServer              = new PacketRelayer(clientSocket, serverSocket, serverAddress, serverRemotePort, packetDropPercentage);
         Thread sendToServerRelayThread          = new Thread(sendToServer);
         sendToServerRelayThread.start();        
         
         //start server to client relay thread
-        PacketRelayer sendToClient              = new PacketRelayer(serverSocket, clientSocket, clientAddress, clientRemotePort);
+        PacketRelayer sendToClient              = new PacketRelayer(serverSocket, clientSocket, clientAddress, clientRemotePort, packetDropPercentage);
         Thread sendToClientRelayThread          = new Thread(sendToClient);
         sendToClientRelayThread.start();
         
