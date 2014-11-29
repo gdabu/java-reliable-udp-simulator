@@ -43,8 +43,7 @@ public class Server {
         serverLocalSocket.setSoTimeout(2000);
 
         while (true) {
-            //for (int i = 0; i < windowSize; i++) {
-                //Receive packet
+
                 incomingByteBuffer = new byte[1024];
                 incomingPacket = new DatagramPacket(incomingByteBuffer, incomingByteBuffer.length);
 
@@ -53,12 +52,14 @@ public class Server {
                 }catch(SocketTimeoutException to)
                 {
                     continue;
-                };
+                }
                 //retrieve reliable UDP header information
                 ReliableUDPHeader incomingPacketHeader = (ReliableUDPHeader) ReliableUDPHelper.extractObjectFromPacket(incomingPacket);
                 System.out.println("Received from Client: SeqNum=" + incomingPacketHeader.getSeqNum() + ", AckNum=" + incomingPacketHeader.getAckNum());
 
-                receiveWindow.add(incomingPacketHeader);
+
+
+                
                 if(incomingPacketHeader.getPacketType() == 4)
                 {
                     System.out.println("EOT packet received");
@@ -69,24 +70,24 @@ public class Server {
                     DatagramPacket sendPacket = ReliableUDPHelper.storeObjectIntoPacketPayload(incomingPacketHeader, networkAddress, networkPort);
                     System.out.println("Sending Packet: SeqNum=" + incomingPacketHeader.getSeqNum() + ", AckNum=" + incomingPacketHeader.getAckNum());
                     serverLocalSocket.send(sendPacket);
-                    System.out.println("Server done!");
                     break;
                 }
-            //}
+                
+                
 
-
-            for (int j = 0; j < Math.min(windowSize, receiveWindow.size()); j++) {
 
                 //send packets
-                ReliableUDPHeader outgoingHeader = new ReliableUDPHeader(2, windowSize, "", receiveWindow.get(j).getAckNum(), receiveWindow.get(j).getSeqNum() + 1);//receiveWindow.get(j);
+                ReliableUDPHeader outgoingHeader = new ReliableUDPHeader(2, windowSize, "", 0, incomingPacketHeader.getSeqNum() + 1);//receiveWindow.get(j);
 
                 DatagramPacket sendPacket = ReliableUDPHelper.storeObjectIntoPacketPayload(outgoingHeader, networkAddress, networkPort);
                 System.out.println("Sending Packet: SeqNum=" + outgoingHeader.getSeqNum() + ", AckNum=" + outgoingHeader.getAckNum());
                 serverLocalSocket.send(sendPacket);
-            }
+
             
-            receiveWindow.clear();
+
         }
+
+        System.out.println("Server Program Complete!");
 
     }
 }

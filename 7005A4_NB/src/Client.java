@@ -1,10 +1,3 @@
-import java.io.BufferedReader;
-import java.io.ByteArrayInputStream;
-import java.io.ByteArrayOutputStream;
-import java.io.IOException;
-import java.io.InputStreamReader;
-import java.io.ObjectInputStream;
-import java.io.ObjectOutputStream;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.net.InetAddress;
@@ -12,14 +5,10 @@ import java.net.SocketTimeoutException;
 import java.util.ArrayList;
 import java.util.Iterator;
 
-/*
- * To change this license header, choose License Headers in Project Properties.
- * To change this template file, choose Tools | Templates
- * and open the template in the editor.
- */
 /**
  *
  * @author geoffdabu
+ * @author jeffwong
  */
 public class Client {
 
@@ -33,44 +22,47 @@ public class Client {
     private static InetAddress networkAddress;
     private static DatagramSocket clientLocalSocket;
 
-    private static ArrayList<ReliableUDPHeader> allPackets;     //contains all the packets to be sent
-
-    private static ArrayList<ReliableUDPHeader> packetWindow;   //contains the first windowSized amount of packets from allPackets
-
-    private static int ackWaitTime = 5;
+    private static ArrayList<ReliableUDPHeader> packetQueue;     //contains all the packets to be sent
+    private static ArrayList<ReliableUDPHeader> packetWindow;   //contains the first windowSized amount of packets from packetQueue
+    private static ArrayList<ReliableUDPHeader> ackList;
 
     public static void main(String args[]) throws Exception {
         networkAddress = InetAddress.getByName("localhost");
         clientLocalSocket = new DatagramSocket(7004);
-
-        allPackets = new ArrayList();
+        packetQueue = new ArrayList();
         packetWindow = new ArrayList();
+        ackList = new ArrayList();
 
         //initiate3WayHandShake();
-        System.out.println("Connection Established!");
+        System.out.println("> Connection Established!\n");
 
-        int l;
-        //fill up the allPackets arraylist with all the packets that are to be sent
-        for (l = 0; l < totalPackets; l++) {
-            allPackets.add(new ReliableUDPHeader(3, windowSize, "", l, 0));
+
+        // QEUEING STATE
+        //fill up the packetQueue with data packets
+        for (int l = 0; l < totalPackets; l++) {
+            packetQueue.add(new ReliableUDPHeader(3, windowSize, "DATA", l, 0));
         }
 
-        //send/wait for all the packets and all their acks
-        while (!allPackets.isEmpty()) {
+        // RELIABLE UDP TRANSMISSION
+        // All the packets in the packetQeueu are sent to the server and acknowledged.
+        int packetWindowSeqFloor;  // The sequence number of the first packet in the window.  
+        int packetWindowSeqCeil;   // The sequence number of the last packet in the window.
+        clientLocalSocket.setSoTimeout(2000); // Set the initial timeout phase duration
 
-            //add a windowSized amount of packets from allPackets to packetWindow
-            for (int m = 0; m < Math.min(windowSize, allPackets.size()); m++) {
-                packetWindow.add(allPackets.get(m));
+        // Begin Reliable UDP Transmission
+        // Transmission ends when there are no data packets left to be sent.
+        while (!packetQueue.isEmpty()) {
+
+            //add a windowSized amount of packets from packetQueue to packetWindow
+            for (int m = 0; m < Math.min(windowSize, packetQueue.size()); m++) {
+                packetWindow.add(packetQueue.get(m));
             }
-
-            //determine lowest and highest sequence numbers
-            int x = packetWindow.get(0).getSeqNum();
-            int y = packetWindow.get(Math.min(windowSize - 1, allPackets.size() - 1)).getSeqNum();
-
-            //start timer here
-            long startTime = System.currentTimeMillis();
-            for (int i = 0; i < Math.min(windowSize, allPackets.size()); i++) {
-                //send packets
+            
+            // SEND STATE
+            //
+            // During the send state the client sends a window sized amount of packets
+            System.out.println("\n> Sending..."); 
+            for (int i = 0; i < Math.min(windowSize, packetQueue.size()); i++) {
 
                 //set reliable UDP header information
                 DatagramPacket sendPacket = ReliableUDPHelper.storeObjectIntoPacketPayload(packetWindow.get(i), networkAddress, networkPort);
@@ -78,76 +70,101 @@ public class Client {
                 clientLocalSocket.send(sendPacket);
             }
 
-            ArrayList<ReliableUDPHeader> AckList = new ArrayList();
-            clientLocalSocket.setSoTimeout(2000);
+            // RECEIVE STATE
+            //
+            // During the receive state the client listens for windowSized amount of packets.
+            // If packets have been dropped during transmission then a timeout will occur
+            // and the client will transition into the send state
+            
+            //determine lowest and highest sequence numbers of the window that was sent
+            packetWindowSeqFloor = packetWindow.get(0).getSeqNum();
+            packetWindowSeqCeil = packetWindow.get(Math.min(windowSize - 1, packetQueue.size() - 1)).getSeqNum();
 
-            for (int j = 0; j < Math.min(windowSize, allPackets.size()); j++) {
-            //while (System.currentTimeMillis() - startTime < ackWaitTime * 1000) {
+            System.out.println("\n> Receiving...");
+            for (int j = 0; j < Math.min(windowSize, packetQueue.size()); j++) {
 
-                //Receive packet
                 incomingByteBuffer = new byte[1024];
                 incomingPacket = new DatagramPacket(incomingByteBuffer, incomingByteBuffer.length);
 
+                //If a Timeout occurs then a new window of packets are to be sent 
                 try {
                     clientLocalSocket.receive(incomingPacket);
                 } catch (SocketTimeoutException to) {
-                    System.out.println("Packet Timeout");
+                    System.out.println("> Packet Timeout");
+
+                    //break out of the receive state and begin sending
                     break;
                 }
 
-                //retrieve reliable UDP header information
+                // If an ACK packet is Received then analyze the header
+                // Extract the ReliableUDPHeader from the ACK packet payload
                 ReliableUDPHeader incomingPacketHeader = (ReliableUDPHeader) ReliableUDPHelper.extractObjectFromPacket(incomingPacket);
                 System.out.println("Received from Server: SeqNum=" + incomingPacketHeader.getSeqNum() + ", AckNum=" + incomingPacketHeader.getAckNum());
-                if (incomingPacketHeader.getAckNum() - 1 < x || incomingPacketHeader.getAckNum() - 1 > y) {
+                
+                // If we receive an ACK that is for a packet outside of latest sent window then ignore it.
+                if (incomingPacketHeader.getAckNum() - 1 < packetWindowSeqFloor || incomingPacketHeader.getAckNum() - 1 > packetWindowSeqCeil) {
+                    
                     continue;
                 }
 
-                AckList.add(incomingPacketHeader);
+                // If we receive an ACK that is for a packet from the latest window sent add it to the ACK list
+                // All the packets in the ACK list are removed from the packetQeueu so that the packet is'nt sent again
+                ackList.add(incomingPacketHeader);
 
-                if (AckList.size() == packetWindow.size()) {
+                // If we received all the ACKs for the latest window that was sent, then send the new window
+                if (ackList.size() == packetWindow.size()) {
+                    //break out of the receive state and begin sending                    
                     break;
                 }
             }
 
-            System.out.println("out of receiving loop :" + (System.currentTimeMillis() - startTime));
+            //Remove all the packets that have been ACK'ed successfully from the packetQueue
+            Iterator<ReliableUDPHeader> q = packetQueue.iterator();
 
-            //Remove all the packets that have been successfully ACKed from the queue
-            Iterator<ReliableUDPHeader> q = allPackets.iterator();
-
-            for (ReliableUDPHeader p : AckList) {
+            for (ReliableUDPHeader p : ackList) {
                 while (q.hasNext()) {
                     if (p.getAckNum() - 1 == q.next().getSeqNum()) {
                         q.remove();
                     }
                 }
-                q = allPackets.iterator();
+                q = packetQueue.iterator();
             }
 
-            AckList.clear();
-            packetWindow.clear();
 
+            //reset both the packetWindow and ackList 
+            packetWindow.clear();
+            ackList.clear();
         }
+
+        System.out.println("ALL DATA SENT");
+
+
+        // KILL STATE
+        //
+        // At this point all the data packets have been sent and 
+        // the client attempts to kill the connection.
+        // EOT packets are sent to the server until an EOT acknowldegement is received or
+        // a specified number of EOT packets have been sent out (i.e. 5 EOT packets)
 
         incomingByteBuffer = new byte[1024];
         incomingPacket = new DatagramPacket(incomingByteBuffer, incomingByteBuffer.length);
-        //add the EOT packet to the end of the queue
-        ReliableUDPHeader eotHeader = new ReliableUDPHeader(4, windowSize, "", totalPackets, 0);
 
+        ReliableUDPHeader eotHeader = new ReliableUDPHeader(4, windowSize, "EOT", totalPackets, 0);
         DatagramPacket sendPacket = ReliableUDPHelper.storeObjectIntoPacketPayload(eotHeader, networkAddress, networkPort);
 
         boolean resendEOT = true;
         int repeatEOTsend = 0;
-        
+
         do {
             System.out.println("Sending EOT Packet: SeqNum=" + eotHeader.getSeqNum() + ", AckNum=" + eotHeader.getAckNum());
             clientLocalSocket.send(sendPacket);
             repeatEOTsend += 1;
-            try{
+            try {
                 clientLocalSocket.receive(incomingPacket);
                 ReliableUDPHeader eotACK = (ReliableUDPHeader) ReliableUDPHelper.extractObjectFromPacket(incomingPacket);
                 System.out.println("Receive EOT Ack: SeqNum=" + eotACK.getSeqNum() + ", AckNum=" + eotACK.getAckNum());
-
-            }catch(SocketTimeoutException to){
+                System.out.println("\n>Connection Closed\n");
+            } catch (SocketTimeoutException to) {
                 continue;
             }
             resendEOT = false;
