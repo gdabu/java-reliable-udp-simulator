@@ -14,9 +14,9 @@ class PacketRelayer implements Runnable {
 
     private DatagramSocket localReceiveSocket;
     private DatagramSocket localTransmitSocket;
-    
+
     private int dropPercentage = 0;
-    
+
     private static int totalDropped = 0;
 
     public PacketRelayer(DatagramSocket localReceiveSocket,
@@ -36,38 +36,41 @@ class PacketRelayer implements Runnable {
             Random rand = new Random();
             byte[] transmitByteArray;
             int randomNumber = 0;
-            
+
             while (true) {
                 transmitByteArray = new byte[1024];
 
                 DatagramPacket transmitPacket = new DatagramPacket(transmitByteArray, transmitByteArray.length);
 
-                //Wait for packet from sender
+                // Wait for packet from sender
                 localReceiveSocket.receive(transmitPacket);
-                System.out.println(">Packet Received from" + transmitPacket.getPort());
-                
-                
+                System.out.println("> Receiving from: " + transmitPacket.getAddress() + "/" + transmitPacket.getPort());
+
+                // DROP STATE
+                // Packets are dropped if the random generated number is less than or equal to
+                // the user specified drop rate
                 randomNumber = rand.nextInt(100) + 1;
-                //System.out.println(randomNumber);
-                
-                //ReliableUDPHeader droppedPacket = (ReliableUDPHeader) ReliableUDPHelper.extractObjectFromPacket(transmitPacket);
-                if(randomNumber <= dropPercentage)
-                //if(droppedPacket.getSeqNum() == 3)
-                {
+
+                if (randomNumber <= dropPercentage) {
                     ReliableUDPHeader droppedPacket = (ReliableUDPHeader) ReliableUDPHelper.extractObjectFromPacket(transmitPacket);
-                    System.out.print("Packet Dropped: Type=" + droppedPacket.getPacketType()+ ", SeqNum=" 
+                    System.out.println("\n> Packet Dropped: Type=" + droppedPacket.getPacketType() + ", SeqNum="
                             + droppedPacket.getSeqNum() + ", AckNum=" + droppedPacket.getAckNum());
-                    System.out.println(" ;; totalPacketsDropped=" + ++totalDropped);
+                    System.out.println(" > totalPacketsDropped=" + ++totalDropped + "\n");
                     continue;
                 }
                 
-                //change packet address from receiver to destination address
+                Thread.sleep(500);
+                
+                
+                // SEND STATE
+                // change packet address from receiver to destination address
                 transmitPacket.setAddress(remoteReceiverAddress);
                 transmitPacket.setPort(remoteReceiverPort);
 
-                //Send packet to receiver
+                // Send packet to receiver
                 localTransmitSocket.send(transmitPacket);
-                System.out.println(">Packet Sent to: " + transmitPacket.getPort());
+                System.out.println(">Sending to: " + transmitPacket.getAddress() + "/" + transmitPacket.getPort());
+                
             }
         } catch (Exception e) {
 
@@ -79,45 +82,45 @@ public class Network {
 
     private static InetAddress clientAddress;
     private static InetAddress serverAddress;
-    private static final int clientRemotePort   = 7004;
-    private static final int serverRemotePort   = 7007;
-    private static final int clientPort         = 7005;
-    private static final int serverPort         = 7006;
+    private static final int clientRemotePort = 7004;
+    private static final int serverRemotePort = 7007;
+    private static final int clientPort = 7005;
+    private static final int serverPort = 7006;
 
     private static DatagramSocket clientSocket;
     private static DatagramSocket serverSocket;
-    
+
     private static int packetDropPercentage = 0;
 
     public static void main(String args[]) throws Exception {
-        
+
         packetDropPercentage = Integer.parseInt(args[0]);
-        
+
         //initialize (remote) client and server addresses 
         clientAddress = InetAddress.getByName("localhost");
         serverAddress = InetAddress.getByName("localhost");
-        
+
         //initialize local sockets for client and server transmission
         clientSocket = new DatagramSocket(clientPort);
         serverSocket = new DatagramSocket(serverPort);
-        
-        System.out.println(">Initialize Network");
-        System.out.println("Approximate Drop Rate: " + packetDropPercentage);
-        
+
+        System.out.println("> Initialize Network");
+        System.out.println("> Approximate Drop Rate: " + packetDropPercentage + "%\n");
+
         //start client to server relay thread
-        PacketRelayer sendToServer              = new PacketRelayer(clientSocket, serverSocket, serverAddress, serverRemotePort, packetDropPercentage);
-        Thread sendToServerRelayThread          = new Thread(sendToServer);
-        sendToServerRelayThread.start();        
-        
+        PacketRelayer sendToServer = new PacketRelayer(clientSocket, serverSocket, serverAddress, serverRemotePort, packetDropPercentage);
+        Thread sendToServerRelayThread = new Thread(sendToServer);
+        sendToServerRelayThread.start();
+
         //start server to client relay thread
-        PacketRelayer sendToClient              = new PacketRelayer(serverSocket, clientSocket, clientAddress, clientRemotePort, packetDropPercentage);
-        Thread sendToClientRelayThread          = new Thread(sendToClient);
+        PacketRelayer sendToClient = new PacketRelayer(serverSocket, clientSocket, clientAddress, clientRemotePort, packetDropPercentage);
+        Thread sendToClientRelayThread = new Thread(sendToClient);
         sendToClientRelayThread.start();
-        
+
         //Wait for both  relay threads to end
         sendToServerRelayThread.join();
         sendToClientRelayThread.join();
-        
-        System.out.print(">Ending Network");
+
+        System.out.print("> Ending Network");
     }
 }
