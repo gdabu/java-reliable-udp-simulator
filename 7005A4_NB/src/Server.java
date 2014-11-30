@@ -42,8 +42,8 @@ public class Server {
 
         //print log to file
         out = new PrintStream(new FileOutputStream("ServerLog.txt"));
-        System.setOut(out);
-        
+        //System.setOut(out);
+
         //scan from config file        
         ConfigParser configFile;
 

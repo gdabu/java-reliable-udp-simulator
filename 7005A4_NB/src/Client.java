@@ -39,6 +39,11 @@ public class Client {
     
     public static void main(String args[]) throws Exception {
 
+        //print log to file
+        out = new PrintStream(new FileOutputStream("ClientLog.txt"));
+        //System.setOut(out);
+        
+        
         //Get information from config file
         ConfigParser configFile;
 
@@ -60,15 +65,12 @@ public class Client {
 
         totalPackets = configFile.getTotalPackets();
         windowSize = configFile.getWindowSize();
-        waitTime = configFile.getDelayTime() * 4;
+        waitTime = configFile.getDelayTime() * 3;
 
         packetQueue = new ArrayList<ReliableUDPHeader>();
         packetWindow = new ArrayList<ReliableUDPHeader>();
         ackList = new ArrayList<ReliableUDPHeader>();
 
-        //print log to file
-        out = new PrintStream(new FileOutputStream("ClientLog.txt"));
-        System.setOut(out);
                 
         System.out.println("Client Initiated\nConnection Established!\n");
 

@@ -24,12 +24,14 @@ class PacketRelayer implements Runnable {
 
     private static int dropTotal = 0;
     private static int transmitTotal = 1;
+    private static int delay = 0;
 
     public PacketRelayer(DatagramSocket localReceiveSocket,
             DatagramSocket localTransmitSocket,
             InetAddress remoteReceiverAddress,
             int remoteReceiverPort,
-            int dropPercentage) {
+            int dropPercentage,
+            int delay) {
         this.localReceiveSocket = localReceiveSocket;
         this.localTransmitSocket = localTransmitSocket;
         this.remoteReceiverAddress = remoteReceiverAddress;
@@ -82,7 +84,7 @@ class PacketRelayer implements Runnable {
                     }
                 }
 
-                Thread.sleep(500);
+                Thread.sleep(delay);
 
                 // SEND STATE
                 // change packet address from receiver to destination address
@@ -112,6 +114,7 @@ public class Network {
     private static DatagramSocket serverSocket;
 
     private static int packetDropPercentage = 0;
+    private static int delay = 0;
 
     private static PrintStream out;
 
@@ -119,7 +122,7 @@ public class Network {
 
         //print log to file
         out = new PrintStream(new FileOutputStream("NetworkLog.txt"));
-        System.setOut(out);
+        //System.setOut(out);
 
         //scan from config file        
         ConfigParser configFile;
@@ -138,6 +141,7 @@ public class Network {
         serverRemotePort = configFile.getServerPort();
 
         packetDropPercentage = configFile.getDropRate();
+        delay = configFile.getDelayTime();
 
         //initialize (remote) client and server addresses 
         clientAddress = InetAddress.getByName(configFile.getClientAddress());
@@ -151,12 +155,12 @@ public class Network {
         System.out.println("> Approximate Drop Rate: " + packetDropPercentage + "%\n");
 
         //start client to server relay thread
-        PacketRelayer sendToServer = new PacketRelayer(clientSocket, serverSocket, serverAddress, serverRemotePort, packetDropPercentage);
+        PacketRelayer sendToServer = new PacketRelayer(clientSocket, serverSocket, serverAddress, serverRemotePort, packetDropPercentage, delay);
         Thread sendToServerRelayThread = new Thread(sendToServer);
         sendToServerRelayThread.start();
 
         //start server to client relay thread
-        PacketRelayer sendToClient = new PacketRelayer(serverSocket, clientSocket, clientAddress, clientRemotePort, packetDropPercentage);
+        PacketRelayer sendToClient = new PacketRelayer(serverSocket, clientSocket, clientAddress, clientRemotePort, packetDropPercentage, delay);
         Thread sendToClientRelayThread = new Thread(sendToClient);
         sendToClientRelayThread.start();
 
