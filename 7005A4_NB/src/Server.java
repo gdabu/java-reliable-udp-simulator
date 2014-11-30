@@ -25,6 +25,14 @@ public class Server {
 
     private static byte[] incomingByteBuffer;
     private static DatagramPacket incomingPacket;
+    
+    private static int srcPort;
+    private static int dstPort;
+    private static int netPort;
+    private static String srcAddress;
+    private static String dstAddress;
+    private static String netAddress;
+    
 
     private static InetAddress networkAddress;
     private static DatagramSocket serverLocalSocket;
@@ -32,9 +40,20 @@ public class Server {
     private static ArrayList<ReliableUDPHeader> receiveWindow;
 
     public static void main(String args[]) throws Exception {
-        networkAddress = InetAddress.getByName("localhost");
-        serverLocalSocket = new DatagramSocket(7007);
+        
+        //scan from config file
+        srcPort = 7007; 
+        netPort = 7006;
+        dstPort = 7004;
+        srcAddress = "localhost";
+        dstAddress = "localhost";
+        netAddress = "localhost";
+        
+        networkAddress = InetAddress.getByName(netAddress);
+        serverLocalSocket = new DatagramSocket(srcPort);
+        
 
+        
         //waitFor3WayHandShake();
         System.out.println("Connection Established!");
 
@@ -61,9 +80,8 @@ public class Server {
 
                 
                 if(incomingPacketHeader.getPacketType() == 4)
-                {
+                {                    
                     System.out.println("EOT packet received");
-                    incomingPacketHeader = (ReliableUDPHeader) ReliableUDPHelper.extractObjectFromPacket(incomingPacket);
                     incomingPacketHeader.setPacketType(4);
                     incomingPacketHeader.setAckNum(incomingPacketHeader.getSeqNum() + 1);
                     incomingPacketHeader.setSeqNum(0);
@@ -77,7 +95,7 @@ public class Server {
 
 
                 //send packets
-                ReliableUDPHeader outgoingHeader = new ReliableUDPHeader(2, windowSize, "", 0, incomingPacketHeader.getSeqNum() + 1);//receiveWindow.get(j);
+                ReliableUDPHeader outgoingHeader = new ReliableUDPHeader(2, windowSize, "", 0, incomingPacketHeader.getSeqNum() + 1, srcPort, srcAddress, dstPort, dstAddress);//receiveWindow.get(j);
 
                 DatagramPacket sendPacket = ReliableUDPHelper.storeObjectIntoPacketPayload(outgoingHeader, networkAddress, networkPort);
                 System.out.println("Sending Packet: SeqNum=" + outgoingHeader.getSeqNum() + ", AckNum=" + outgoingHeader.getAckNum());
