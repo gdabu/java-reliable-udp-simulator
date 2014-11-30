@@ -1,8 +1,5 @@
-import java.io.ByteArrayInputStream;
-import java.io.ByteArrayOutputStream;
-import java.io.IOException;
-import java.io.ObjectInputStream;
-import java.io.ObjectOutputStream;
+import java.io.FileOutputStream;
+import java.io.PrintStream;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.net.InetAddress;
@@ -17,6 +14,7 @@ import java.util.ArrayList;
 /**
  *
  * @author geoffdabu
+ * @authro jeffwong
  */
 public class Server {
 
@@ -25,83 +23,105 @@ public class Server {
 
     private static byte[] incomingByteBuffer;
     private static DatagramPacket incomingPacket;
-    
+
     private static int srcPort;
     private static int dstPort;
     private static int netPort;
     private static String srcAddress;
     private static String dstAddress;
     private static String netAddress;
-    
 
     private static InetAddress networkAddress;
     private static DatagramSocket serverLocalSocket;
 
     private static ArrayList<ReliableUDPHeader> receiveWindow;
 
+    private static PrintStream out;
+
     public static void main(String args[]) throws Exception {
+
+        //print log to file
+        out = new PrintStream(new FileOutputStream("ServerLog.txt"));
+        System.setOut(out);
         
+        //scan from config file        
+        ConfigParser configFile;
+
+        try {
+            configFile = new ConfigParser("config.properties");
+        } catch (Exception e) {
+            e.printStackTrace();
+            System.out.println("Unable to open File");
+            return;
+        };
+
         //scan from config file
-        srcPort = 7007; 
-        netPort = 7006;
-        dstPort = 7004;
-        srcAddress = "localhost";
-        dstAddress = "localhost";
-        netAddress = "localhost";
-        
+        srcPort = configFile.getServerPort();
+        netPort = configFile.getNetServerPort();
+        dstPort = configFile.getClientPort();
+        srcAddress = configFile.getServerAddress();
+        dstAddress = configFile.getClientAddress();
+        netAddress = configFile.getNetAddress();
+
         networkAddress = InetAddress.getByName(netAddress);
         serverLocalSocket = new DatagramSocket(srcPort);
-        
 
-        
-        //waitFor3WayHandShake();
-        System.out.println("Connection Established!");
+        System.out.println("Server Initiated\nConnection Established!\n\n");
 
         receiveWindow = new ArrayList();
-        
+
         serverLocalSocket.setSoTimeout(2000);
 
         while (true) {
 
-                incomingByteBuffer = new byte[1024];
-                incomingPacket = new DatagramPacket(incomingByteBuffer, incomingByteBuffer.length);
+            incomingByteBuffer = new byte[1024];
+            incomingPacket = new DatagramPacket(incomingByteBuffer, incomingByteBuffer.length);
 
-                try{
-                    serverLocalSocket.receive(incomingPacket);
-                }catch(SocketTimeoutException to)
-                {
-                    continue;
-                }
-                //retrieve reliable UDP header information
-                ReliableUDPHeader incomingPacketHeader = (ReliableUDPHeader) ReliableUDPHelper.extractObjectFromPacket(incomingPacket);
-                System.out.println("Received from Client: SeqNum=" + incomingPacketHeader.getSeqNum() + ", AckNum=" + incomingPacketHeader.getAckNum());
+            try {
+                serverLocalSocket.receive(incomingPacket);
+            } catch (SocketTimeoutException to) {
+                continue;
+            }
+            //retrieve reliable UDP header information
+            ReliableUDPHeader incomingPacketHeader = (ReliableUDPHeader) ReliableUDPHelper.extractObjectFromPacket(incomingPacket);
+            System.out.println("> Received:   Src=" + incomingPacketHeader.getSrcAddress() + ":" + incomingPacketHeader.srcPort
+                    + ", Dst=" + incomingPacketHeader.getDstAddress() + ":" + incomingPacketHeader.getDstPort()
+                    + ", SeqNum=" + incomingPacketHeader.getSeqNum()
+                    + ", AckNum=" + incomingPacketHeader.getAckNum()
+                    + ", Type=" + incomingPacketHeader.getPacketType()
+                    + ":" + incomingPacketHeader.getData()
+            );
 
-
-
-                
-                if(incomingPacketHeader.getPacketType() == 4)
-                {                    
-                    System.out.println("EOT packet received");
-                    incomingPacketHeader.setPacketType(4);
-                    incomingPacketHeader.setAckNum(incomingPacketHeader.getSeqNum() + 1);
-                    incomingPacketHeader.setSeqNum(0);
-                    DatagramPacket sendPacket = ReliableUDPHelper.storeObjectIntoPacketPayload(incomingPacketHeader, networkAddress, networkPort);
-                    System.out.println("Sending Packet: SeqNum=" + incomingPacketHeader.getSeqNum() + ", AckNum=" + incomingPacketHeader.getAckNum());
-                    serverLocalSocket.send(sendPacket);
-                    break;
-                }
-                
-                
-
-
-                //send packets
-                ReliableUDPHeader outgoingHeader = new ReliableUDPHeader(2, windowSize, "", 0, incomingPacketHeader.getSeqNum() + 1, srcPort, srcAddress, dstPort, dstAddress);//receiveWindow.get(j);
-
-                DatagramPacket sendPacket = ReliableUDPHelper.storeObjectIntoPacketPayload(outgoingHeader, networkAddress, networkPort);
-                System.out.println("Sending Packet: SeqNum=" + outgoingHeader.getSeqNum() + ", AckNum=" + outgoingHeader.getAckNum());
+            if (incomingPacketHeader.getPacketType() == 4) {
+                incomingPacketHeader.setPacketType(5);
+                incomingPacketHeader.setAckNum(incomingPacketHeader.getSeqNum() + 1);
+                incomingPacketHeader.setSeqNum(0);
+                incomingPacketHeader.setData("EOT ACK");
+                DatagramPacket sendPacket = ReliableUDPHelper.storeObjectIntoPacketPayload(incomingPacketHeader, networkAddress, networkPort);
+                System.out.println("\n> Sending:   Src=" + incomingPacketHeader.getSrcAddress() + ":" + incomingPacketHeader.srcPort
+                        + ", Dst=" + incomingPacketHeader.getDstAddress() + ":" + incomingPacketHeader.getDstPort()
+                        + ", SeqNum=" + incomingPacketHeader.getSeqNum()
+                        + ", AckNum=" + incomingPacketHeader.getAckNum()
+                        + ", Type=" + incomingPacketHeader.getPacketType()
+                        + ":" + incomingPacketHeader.getData()
+                );
                 serverLocalSocket.send(sendPacket);
+                break;
+            }
 
-            
+            //send packets
+            ReliableUDPHeader outgoingHeader = new ReliableUDPHeader(2, windowSize, "ACK", 0, incomingPacketHeader.getSeqNum() + 1, srcPort, srcAddress, dstPort, dstAddress);//receiveWindow.get(j);
+
+            DatagramPacket sendPacket = ReliableUDPHelper.storeObjectIntoPacketPayload(outgoingHeader, networkAddress, networkPort);
+            System.out.println("> Sending:    Src=" + outgoingHeader.getSrcAddress() + ":" + outgoingHeader.srcPort
+                    + ", Dst=" + outgoingHeader.getDstAddress() + ":" + outgoingHeader.getDstPort()
+                    + ", SeqNum=" + outgoingHeader.getSeqNum()
+                    + ", AckNum=" + outgoingHeader.getAckNum()
+                    + ", Type=" + outgoingHeader.getPacketType()
+                    + ":" + outgoingHeader.getData()
+            );
+
+            serverLocalSocket.send(sendPacket);
 
         }
 

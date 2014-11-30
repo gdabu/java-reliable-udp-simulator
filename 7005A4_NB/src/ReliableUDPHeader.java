@@ -8,6 +8,7 @@ import java.io.Serializable;
 /**
  *
  * @author geoffdabu
+ * @author jeffwong
  */
 public class ReliableUDPHeader implements Serializable{
 
@@ -19,8 +20,8 @@ public class ReliableUDPHeader implements Serializable{
     
     int srcPort;
     int dstPort;
-    String srcAddress;
-    String dstAddress;
+    private String srcAddress;
+    private String dstAddress;
     
     
     public ReliableUDPHeader(int PacketType, int WindowSize, String data, int SeqNum, int AckNum, int srcPort, String srcAddress, int dstPort, String dstAddress) {

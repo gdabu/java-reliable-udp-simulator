@@ -1,3 +1,5 @@
+import java.io.FileOutputStream;
+import java.io.PrintStream;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.net.InetAddress;
@@ -6,11 +8,12 @@ import java.util.Random;
 /**
  *
  * @author geoffdabu
+ * @author jeffwong
  */
 class PacketRelayer implements Runnable {
 
-    private InetAddress remoteReceiverAddress;
     private int remoteReceiverPort;
+    private InetAddress remoteReceiverAddress;
 
     private DatagramSocket localReceiveSocket;
     private DatagramSocket localTransmitSocket;
@@ -18,6 +21,9 @@ class PacketRelayer implements Runnable {
     private int dropPercentage = 0;
 
     private static int totalDropped = 0;
+
+    private static int dropTotal = 0;
+    private static int transmitTotal = 1;
 
     public PacketRelayer(DatagramSocket localReceiveSocket,
             DatagramSocket localTransmitSocket,
@@ -44,24 +50,40 @@ class PacketRelayer implements Runnable {
 
                 // Wait for packet from sender
                 localReceiveSocket.receive(transmitPacket);
-                System.out.println("> Receiving from: " + transmitPacket.getAddress() + "/" + transmitPacket.getPort());
-
+                ReliableUDPHeader transmitHeader = (ReliableUDPHeader) ReliableUDPHelper.extractObjectFromPacket(transmitPacket);
+                System.out.println("> Transmit:   Src=" + transmitHeader.getSrcAddress() + ":" + transmitHeader.getSrcPort()
+                        + ", Dst=" + transmitHeader.getDstAddress() + ":" + transmitHeader.getDstPort()
+                        + ", SeqNum=" + transmitHeader.getSeqNum()
+                        + ", AckNum=" + transmitHeader.getAckNum()
+                        + ", Type=" + transmitHeader.getPacketType()
+                        + ":" + transmitHeader.getData()
+                );
                 // DROP STATE
                 // Packets are dropped if the random generated number is less than or equal to
-                // the user specified drop rate
+                // the user specified drop rate, and if the dropped packet to total packet ratio
+                // is less than the specified drop percentage. 
+                // 
                 randomNumber = rand.nextInt(100) + 1;
 
-                if (randomNumber <= dropPercentage) {
-                    ReliableUDPHeader droppedPacket = (ReliableUDPHeader) ReliableUDPHelper.extractObjectFromPacket(transmitPacket);
-                    System.out.println("\n> Packet Dropped: Type=" + droppedPacket.getPacketType() + ", SeqNum="
-                            + droppedPacket.getSeqNum() + ", AckNum=" + droppedPacket.getAckNum());
-                    System.out.println(" > totalPacketsDropped=" + ++totalDropped + "\n");
-                    continue;
+                if ((dropTotal / transmitTotal) * 100 <= dropPercentage) {
+                    if (randomNumber <= dropPercentage) {
+                        ReliableUDPHeader droppedPacket = (ReliableUDPHeader) ReliableUDPHelper.extractObjectFromPacket(transmitPacket);
+                        System.out.println("\n> Dropped:    Src=" + droppedPacket.getSrcAddress() + ":" + droppedPacket.getSrcPort()
+                                + ", Dst=" + droppedPacket.getDstAddress() + ":" + droppedPacket.getDstPort()
+                                + ", SeqNum=" + droppedPacket.getSeqNum()
+                                + ", AckNum=" + droppedPacket.getAckNum()
+                                + ", Type=" + droppedPacket.getPacketType()
+                                + ":" + droppedPacket.getData()
+                        );
+                        System.out.println("TotalDrops: " + dropTotal);
+                        System.out.println("TotalTransmits: " + transmitTotal + "\n");
+                        dropTotal += 1;
+                        continue;
+                    }
                 }
-                
+
                 Thread.sleep(500);
-                
-                
+
                 // SEND STATE
                 // change packet address from receiver to destination address
                 transmitPacket.setAddress(remoteReceiverAddress);
@@ -69,8 +91,7 @@ class PacketRelayer implements Runnable {
 
                 // Send packet to receiver
                 localTransmitSocket.send(transmitPacket);
-                System.out.println(">Sending to: " + transmitPacket.getAddress() + "/" + transmitPacket.getPort());
-                
+                transmitTotal += 1;
             }
         } catch (Exception e) {
 
@@ -82,23 +103,45 @@ public class Network {
 
     private static InetAddress clientAddress;
     private static InetAddress serverAddress;
-    private static final int clientRemotePort = 7004;
-    private static final int serverRemotePort = 7007;
-    private static final int clientPort = 7005;
-    private static final int serverPort = 7006;
+    private static int clientRemotePort = 7004;
+    private static int serverRemotePort = 7007;
+    private static int clientPort = 7005;
+    private static int serverPort = 7006;
 
     private static DatagramSocket clientSocket;
     private static DatagramSocket serverSocket;
 
     private static int packetDropPercentage = 0;
 
+    private static PrintStream out;
+
     public static void main(String args[]) throws Exception {
 
-        packetDropPercentage = Integer.parseInt(args[0]);
+        //print log to file
+        out = new PrintStream(new FileOutputStream("NetworkLog.txt"));
+        System.setOut(out);
+
+        //scan from config file        
+        ConfigParser configFile;
+
+        try {
+            configFile = new ConfigParser("config.properties");
+        } catch (Exception e) {
+            System.out.println("Unable to open File");
+            return;
+        }
+
+        //scan from config file
+        clientPort = configFile.getNetClientPort();
+        serverPort = configFile.getNetServerPort();
+        clientRemotePort = configFile.getClientPort();
+        serverRemotePort = configFile.getServerPort();
+
+        packetDropPercentage = configFile.getDropRate();
 
         //initialize (remote) client and server addresses 
-        clientAddress = InetAddress.getByName("localhost");
-        serverAddress = InetAddress.getByName("localhost");
+        clientAddress = InetAddress.getByName(configFile.getClientAddress());
+        serverAddress = InetAddress.getByName(configFile.getServerAddress());
 
         //initialize local sockets for client and server transmission
         clientSocket = new DatagramSocket(clientPort);

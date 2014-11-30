@@ -16,6 +16,7 @@ import java.net.InetAddress;
  * 
  * 
  * @author geoffdabu
+ * @author jeffwong
  */
 public class ReliableUDPHelper {
     /**
